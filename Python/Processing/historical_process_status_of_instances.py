@@ -4,13 +4,15 @@
 # This "single core" version of the file will do all processing in one thread, which may take a long time.
 # For faster processing, use the "multicore" version of the file.
 
-import pandas as pd
+import argparse
 import os
-from tqdm import tqdm
-from datetime import datetime, timedelta
+import re
 import subprocess
 import time
-import re
+from datetime import datetime, timedelta
+
+import pandas as pd
+from tqdm import tqdm
 
 # Default paths (change these to your actual paths). You can put them here or enter them when prompted.
 # Updated to match the new structure used by the download_binance_historical_data.py script:
@@ -19,7 +21,10 @@ instances_folder = os.path.join('..', '..', 'Data', 'SOLUSDT-BINANCE', 'Instance
 default_output_folder = os.path.join('..', '..', 'Data', 'SOLUSDT-BINANCE', 'Instances', '1v1', 'Processed', 'CompleteSet')
 
 # Flag to control whether the old file is deleted after saving the output
-delete_unprocessed_when_done = True  
+delete_unprocessed_when_done = True
+
+# Files discovered containing timeframe data
+timeframe_files = {}
 
 # Dictionary to store loaded timeframe data
 timeframe_data = {}
@@ -544,12 +549,14 @@ def find_target_date(target_price, direction, start_date, end_date=None, skip_ex
             target_date, extreme_price, extreme_date, _ = search_in_higher_timeframe(
                 '1D', target_price, direction, next_gear_shift, end_date, skip_extreme_checking
             )
-    
+
     # Return the results
     return target_date, extreme_price, extreme_date
 
-# Subroutine to process an instance 
+# Subroutine to process an instance
 def process_instance(instance, idx, instance_df):
+    global timeframe_files
+
     # Determine the direction for different targets
     if instance['direction'] == 'long':
         entry_direction = 'down'  # Price needs to go down to reach entry
@@ -847,61 +854,124 @@ def update_status(instance_df, timeframe):
     instance_pbar.close()
     return instance_df
 
-# Prompt for the instances folder, the candle data folder, and the output folder
-instances_folder = input(f"\n\rEnter the folder path containing the instance CSV files (default: {instances_folder}): ") or instances_folder
-price_data_folder = input(f"\n\rEnter the folder path containing the price data CSV files (default: {price_data_folder}): ") or price_data_folder
-output_folder = input(f"\n\rEnter the output folder path to save the updated instance CSV files (default: {default_output_folder}): ") or default_output_folder
 
-# Create the output directory if it doesn't exist
-os.makedirs(output_folder, exist_ok=True)
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description='Process status of instances.')
+    parser.add_argument(
+        '-v', '--verbose', action='store_true', help='Print verbose output')
+    parser.add_argument(
+        '-c', '--candles', dest='candles_dir',
+        help=f'Input folder path containing Candle CSV files (default: {price_data_folder})',
+        default=price_data_folder)
+    parser.add_argument(
+        '-i', '--instances', dest='instances_dir',
+        help=f'Input folder path containing instances CSV files (default: {instances_folder})',
+        default=instances_folder)
+    parser.add_argument(
+        '-o', '--output', dest='output_dir',
+        help=f'Output folder path for instance files (default: {default_output_folder})',
+        default=default_output_folder)
+    parser.add_argument(
+        '-p', '--prompt', action='store_true',
+        help=(
+            'Prompt for paths to be provided. This can still be used with -c,'
+            '-i and -o which will use those args for the defaults'
+        ),
+        default=False)
+    return parser.parse_args()
 
-# Load the timeframe data
-tqdm.write("Loading price data for multiple timeframes...")
-timeframe_files = {
-    '1m': next(f for f in os.listdir(price_data_folder) if f.endswith('_1m.csv')),
-    '30m': next(f for f in os.listdir(price_data_folder) if f.endswith('_30m.csv')),
-    '1D': next(f for f in os.listdir(price_data_folder) if f.endswith('_1D.csv'))
-}
 
-for timeframe, filename in timeframe_files.items():
-    filepath = os.path.join(price_data_folder, filename)
-    tqdm.write(f"Loading {timeframe} data from {filepath}...")
-    timeframe_data[timeframe] = pd.read_csv(filepath, parse_dates=['timestamp'])
-    timeframe_data[timeframe].set_index('timestamp', inplace=True)
-    tqdm.write(f"Loaded {len(timeframe_data[timeframe])} {timeframe} candles.")
+def main(candles_dir, instances_dir, output_dir):
+    global price_data_folder, instances_folder, output_folder, timeframe_files
 
-files = [f for f in os.listdir(instances_folder) if f.endswith('.csv')]
-total_files = len(files)
+    price_data_folder = candles_dir
+    instances_folder = instances_dir
+    output_folder = output_dir
 
-# Create a progress bar for the file processing
-total_size_mb = sum(os.path.getsize(os.path.join(instances_folder, f)) for f in files) / (1024 * 1024)
-total_size_mb = round(total_size_mb, 2)
-file_pbar = tqdm(total=total_size_mb, desc=f'Processing file 0 of {total_files}', unit='MB', leave=True)
+    # Print folder usage information
+    print(f"\nUsing candles directory: {price_data_folder}")
+    print(f"\nUsing instances directory: {instances_folder}")
+    print(f"Using output directory: {output_folder}")
+    print("Each timeframe will have a single file containing all instance types in the 'situation' column.\n")
 
-for idx, filename in enumerate(files, start=1):
-    file_pbar.set_description(f'Processing file {idx} of {total_files}')
-    filepath = os.path.join(instances_folder, filename)
-    file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
-    file_size_mb = round(file_size_mb, 2)
-  
-    # Extract the timeframe from the filename
-    timeframe = filename.split('_')[-1].split('.')[0]
-    
-    # Read the instances CSV file
-    instances = pd.read_csv(filepath, parse_dates=['confirm_date'])
-    
-    # Update the status and active date for instances
-    instances = update_status(instances, timeframe)
-    
-    # Save the updated file
-    output_filepath = os.path.join(output_folder, filename)
-    instances.to_csv(output_filepath, index=False)
-    
-    # Optionally delete the unprocessed file
-    if delete_unprocessed_when_done:
-        os.remove(filepath)
-        
-    file_pbar.update(file_size_mb)
+    # Create the output directory if it doesn't exist
+    os.makedirs(output_folder, exist_ok=True)
 
-file_pbar.close()
-tqdm.write(f"\n\rProcessing complete. Updated files saved to {output_folder}")
+    # Load the timeframe data
+    tqdm.write("Loading price data for multiple timeframes...")
+    timeframe_files = {
+        '1m': next(f for f in os.listdir(price_data_folder) if f.endswith('_1m.csv')),
+        '30m': next(f for f in os.listdir(price_data_folder) if f.endswith('_30m.csv')),
+        '1D': next(f for f in os.listdir(price_data_folder) if f.endswith('_1D.csv'))
+    }
+
+    for timeframe, filename in timeframe_files.items():
+        filepath = os.path.join(price_data_folder, filename)
+        tqdm.write(f"Loading {timeframe} data from {filepath}...")
+        timeframe_data[timeframe] = pd.read_csv(filepath, parse_dates=['timestamp'])
+        timeframe_data[timeframe].set_index('timestamp', inplace=True)
+        tqdm.write(f"Loaded {len(timeframe_data[timeframe])} {timeframe} candles.")
+
+    files = [f for f in os.listdir(instances_folder) if f.endswith('.csv')]
+    total_files = len(files)
+
+    # Create a progress bar for the file processing
+    total_size_mb = sum(os.path.getsize(os.path.join(instances_folder, f)) for f in files) / (1024 * 1024)
+    total_size_mb = round(total_size_mb, 2)
+    file_pbar = tqdm(total=total_size_mb, desc=f'Processing file 0 of {total_files}', unit='MB', leave=True)
+
+    for idx, filename in enumerate(files, start=1):
+        file_pbar.set_description(f'Processing file {idx} of {total_files}')
+        filepath = os.path.join(instances_folder, filename)
+        file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+        file_size_mb = round(file_size_mb, 2)
+
+        # Extract the timeframe from the filename
+        timeframe = filename.split('_')[-1].split('.')[0]
+
+        # Read the instances CSV file
+        instances = pd.read_csv(filepath, parse_dates=['confirm_date'])
+
+        # Update the status and active date for instances
+        instances = update_status(instances, timeframe)
+
+        # Save the updated file
+        output_filepath = os.path.join(output_folder, filename)
+        instances.to_csv(output_filepath, index=False)
+
+        # Optionally delete the unprocessed file
+        if delete_unprocessed_when_done:
+            os.remove(filepath)
+
+        file_pbar.update(file_size_mb)
+
+    file_pbar.close()
+    tqdm.write(f"\n\rProcessing complete. Updated files saved to {output_folder}")
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    # TODO: args.verbose is unused
+
+    candles_dir = args.candles_dir
+    instances_dir = args.instances_dir
+    output_dir = args.output_dir
+
+    if args.prompt:
+        # Prompt for the instances folder, the candle data folder, and the output folder
+        candles_dir = input(
+            '\n\rEnter the folder path containing the price data CSV files '
+            f'(default: {candles_dir}): '
+        ) or candles_dir
+        instances_dir = input(
+            '\n\rEnter the folder path containing the instance CSV files '
+            f'(default: {instances_dir}):'
+        ) or instances_dir
+        output_dir = input(
+            '\n\rEnter the output folder path to save the updated instance '
+            f'CSV files (default: {output_dir}): '
+        ) or output_dir
+
+    main(candles_dir, instances_dir, output_dir)
