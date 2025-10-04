@@ -678,21 +678,22 @@ def process_instance(instance, idx, instance_df):
     if max_drawdown is not None:
         instance_df.at[idx, 'MaxDrawdown'] = max_drawdown
         instance_df.at[idx, 'MaxDrawdown Date'] = max_drawdown_date
-        
+
         # Calculate MaxFib
         fib1_price = instance['entry']  # This is our 1.0 level
-        fib0_price = instance['fib0.0']  # This is our 0.0 level
-        
+        fib0_price = instance['fib0_0']  # This is our 0.0 level
+
         if fib1_price != fib0_price:  # Avoid division by zero
             max_fib = (max_drawdown - fib0_price) / (fib1_price - fib0_price)
             instance_df.at[idx, 'MaxFib'] = max_fib
 
     # Define fib levels in order
+    # fib0_0,fib0_5,fib_0_5,fib_1_0,
     fib_levels = [
-        ('fib0.5', 'Reached0.5', 'DateReached0.5'),
-        ('fib0.0', 'Reached0.0', 'DateReached0.0'),
-        ('fib-0.5', 'Reached-0.5', 'DateReached-0.5'),
-        ('fib-1.0', 'Reached-1.0', 'DateReached-1.0')
+        ('fib0_5', 'Reached0.5', 'DateReached0.5'),
+        ('fib0_0', 'Reached0.0', 'DateReached0.0'),
+        ('fib_0_5', 'Reached-0.5', 'DateReached-0.5'),
+        ('fib_1_0', 'Reached-1.0', 'DateReached-1.0')
     ]
 
     # Set up variables for tracking fib levels
@@ -704,7 +705,7 @@ def process_instance(instance, idx, instance_df):
     }
     fib_dates = {
         'DateReached0.5': None,
-        'DateReached0.0': None, 
+        'DateReached0.0': None,
         'DateReached-0.5': None,
         'DateReached-1.0': None
     }
@@ -724,14 +725,14 @@ def process_instance(instance, idx, instance_df):
         # 2. The previous level was found (based on the pattern: 0.5 -> 0.0 -> -0.5 -> -1.0)
         should_check = True
         
-        if fib_key == 'fib0.0' and reached_fibs.get('Reached0.5', 0) == 0:
+        if fib_key == 'fib0_0' and reached_fibs.get('Reached0.5', 0) == 0:
             # Don't check fib0.0 if fib0.5 wasn't reached
             should_check = False
-        elif fib_key == 'fib-0.5' and reached_fibs.get('Reached0.0', 0) == 0:
+        elif fib_key == 'fib_0_5' and reached_fibs.get('Reached0.0', 0) == 0:
             # Don't check fib-0.5 if fib0.0 wasn't reached
             should_check = False
-        elif fib_key == 'fib-1.0' and reached_fibs.get('Reached-0.5', 0) == 0:
-            # Don't check fib-1.0 if fib-0.5 wasn't reached
+        elif fib_key == 'fib_1_0' and reached_fibs.get('Reached-0.5', 0) == 0:
+            # Don't check fib-1_0 if fib-0.5 wasn't reached
             should_check = False
         
         if should_check:

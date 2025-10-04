@@ -23,7 +23,7 @@ SITUATION_1V1PLUS = '1v1+1'
 
 # Default paths (change these to your actual paths or enter when prompted)
 default_input_path = os.path.join("..", "..", "Data", "SOLUSDT-BINANCE", "Candles")
-default_output_path = os.path.join("..", "..", "Data", "SOLUSDT-BINANCE", "Instances", "Unprocessed")
+default_output_path = os.path.join("..", "..", "Data", "SOLUSDT-BINANCE", "Instances", "1v1", "Unprocessed")
 
 # Verbosity flag
 verbose = False
