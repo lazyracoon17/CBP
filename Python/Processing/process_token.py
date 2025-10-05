@@ -146,7 +146,7 @@ if __name__ == "__main__":
             f'\n    Min Diff Percent: {min_diff_percent}'
     )
     for direction in ['both', 'short', 'long']:
-        outfile = filtered_dir / f'{symbol}_filtered_direction.csv'
+        outfile = filtered_dir / f'{symbol}_filtered_{direction}.csv'
         filter_instances.filter_dir_to_csv(
             input_dir=processed_dir, output_file=outfile, direction=direction,
             status=default_status, min_diff_percent=min_diff_percent,
